@@ -602,6 +602,17 @@ class PlayerController extends Notifier<PlayerUiState> {
         if (s == 1) _maybePrefetchNext();
       case 'error':
         final code = (e.data['code'] as num?)?.toInt() ?? 0;
+        final cur = state.current;
+        if ((code == 152 || code == 153) && cur != null && _embed.tryNextVariant()) {
+          // The new page needs a moment to load the IFrame API; carroLoad queues until ready.
+          final at = state.position;
+          Future<void>.delayed(const Duration(milliseconds: 300), () {
+            if (state.embed && state.current?.id == cur.id) {
+              _embed.load(cur.id, startSeconds: at.inMilliseconds / 1000);
+            }
+          });
+          return;
+        }
         state = state.copyWith(error: embedErrorText(code), playing: false, loadingItem: false);
       case 'rate':
         break;

@@ -35,7 +35,7 @@ class EmbedPlayer {
       ..addJavaScriptChannel('Carro', onMessageReceived: _onMessage)
       ..setNavigationDelegate(NavigationDelegate(
         // Keep the page on the player: taps on the YouTube logo etc. must not navigate away.
-        onNavigationRequest: (r) => r.isMainFrame && !r.url.startsWith('https://www.youtube.com/carrotube')
+        onNavigationRequest: (r) => r.isMainFrame && !r.url.startsWith(_variant.baseUrl)
             ? NavigationDecision.prevent
             : NavigationDecision.navigate,
       ));
@@ -43,7 +43,34 @@ class EmbedPlayer {
     if (platform is AndroidWebViewController) {
       platform.setMediaPlaybackRequiresUserGesture(false);
     }
-    controller.loadHtmlString(_html, baseUrl: 'https://www.youtube.com/carrotube');
+    _loadPage();
+  }
+
+  /// Page setups that YouTube accepts as an embedder. The first one is what the
+  /// youtube_player_iframe package uses on mobile (page + player on youtube-nocookie.com);
+  /// the others are fallbacks when YouTube answers with embed error 152/153.
+  static const _variants = <_EmbedVariant>[
+    _EmbedVariant('https://www.youtube-nocookie.com', 'https://www.youtube-nocookie.com', null),
+    _EmbedVariant('https://www.youtube.com', 'https://www.youtube.com', null),
+    _EmbedVariant('https://carrotube.app', 'https://www.youtube.com', 'https://carrotube.app'),
+  ];
+  int _variantIndex = 0;
+  _EmbedVariant get _variant => _variants[_variantIndex];
+
+  void _loadPage() {
+    final v = _variant;
+    final origin = v.origin == null ? '' : "origin: '${v.origin}', widget_referrer: '${v.origin}', ";
+    final html = _html.replaceAll('__HOST__', v.host).replaceAll('__ORIGIN__', origin);
+    controller.loadHtmlString(html, baseUrl: '${v.baseUrl}/');
+  }
+
+  /// Switches to the next embedder setup (after error 152/153). Returns false when all
+  /// setups were tried.
+  bool tryNextVariant() {
+    if (_variantIndex + 1 >= _variants.length) return false;
+    _variantIndex++;
+    _loadPage();
+    return true;
   }
 
   late final WebViewController controller;
@@ -94,7 +121,8 @@ window.onerror = function(msg) { send({type: 'jserror', message: String(msg)}); 
 function onYouTubeIframeAPIReady() {
   player = new YT.Player('p', {
     width: '100%', height: '100%',
-    playerVars: {playsinline: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3,
+    host: '__HOST__',
+    playerVars: {playsinline: 1, controls: 0, rel: 0, iv_load_policy: 3, __ORIGIN__
                  fs: 0, disablekb: 1, enablejsapi: 1, autoplay: 0},
     events: {
       onReady: function() {
@@ -141,6 +169,13 @@ class EmbedPlayerSurface extends ConsumerWidget {
     final p = ref.watch(embedPlayerProvider);
     return IgnorePointer(child: WebViewWidget(controller: p.controller));
   }
+}
+
+class _EmbedVariant {
+  const _EmbedVariant(this.baseUrl, this.host, this.origin);
+  final String baseUrl;
+  final String host;
+  final String? origin;
 }
 
 /// Human-readable IFrame API error.
