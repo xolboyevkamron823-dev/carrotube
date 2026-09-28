@@ -27,6 +27,9 @@ dependencies:
   collection: ^1.19.1
   carro_native:
     path: packages/carro_native
+  webview_flutter: ^4.14.1
+  webview_flutter_wkwebview: ^3.26.1
+  webview_flutter_android: ^4.14.1
 
 dev_dependencies:
   flutter_test:

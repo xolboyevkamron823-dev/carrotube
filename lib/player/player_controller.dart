@@ -12,6 +12,7 @@ import '../data/library.dart';
 import '../data/models.dart';
 import '../data/settings.dart';
 import '../data/youtube_service.dart';
+import 'embed_player.dart';
 
 enum RepeatMode { off, all, one }
 
@@ -37,6 +38,7 @@ class PlayerUiState {
     this.error,
     this.pipActive = false,
     this.loadingItem = false,
+    this.embed = false,
   });
 
   final List<VideoItem> queue;
@@ -59,6 +61,10 @@ class PlayerUiState {
   final String? error;
   final bool pipActive;
   final bool loadingItem;
+
+  /// Playing through YouTube's official embedded player (web view) instead of the native
+  /// DSP player.
+  final bool embed;
 
   VideoItem? get current => index >= 0 && index < queue.length ? queue[index] : null;
   bool get hasNext => index + 1 < queue.length || (autoplay && upNext.isNotEmpty) || repeat == RepeatMode.all;
@@ -91,6 +97,7 @@ class PlayerUiState {
     bool clearError = false,
     bool? pipActive,
     bool? loadingItem,
+    bool? embed,
   }) =>
       PlayerUiState(
         queue: queue ?? this.queue,
@@ -113,6 +120,7 @@ class PlayerUiState {
         error: clearError ? null : (error ?? this.error),
         pipActive: pipActive ?? this.pipActive,
         loadingItem: loadingItem ?? this.loadingItem,
+        embed: embed ?? this.embed,
       );
 }
 
@@ -132,6 +140,7 @@ class WatchPageOpen extends Notifier<bool> {
 class PlayerController extends Notifier<PlayerUiState> {
   final _player = NativePlayer.instance;
   StreamSubscription<PlayerEvent>? _sub;
+  StreamSubscription<EmbedEvent>? _embedSub;
   Timer? _positionSaver;
   int _loadToken = 0;
   int _refreshAttempts = 0;
@@ -143,11 +152,13 @@ class PlayerController extends Notifier<PlayerUiState> {
   PlayerUiState build() {
     final s = ref.read(settingsProvider);
     _sub = _player.events.listen(_onEvent);
+    _embedSub = ref.read(embedPlayerProvider).events.listen(_onEmbedEvent);
     _player.init();
     _player.setResumeOnBluetooth(s.resumeOnBluetooth);
     _positionSaver = Timer.periodic(const Duration(seconds: 10), (_) => _savePosition());
     ref.onDispose(() {
       _sub?.cancel();
+      _embedSub?.cancel();
       _positionSaver?.cancel();
     });
     return PlayerUiState(audioOnly: s.audioOnlyDefault, autoplay: s.autoplay, speed: s.playbackSpeed);
@@ -231,15 +242,21 @@ class PlayerController extends Notifier<PlayerUiState> {
   // ---------------------------------------------------------------------------------------
   // Transport
   // ---------------------------------------------------------------------------------------
-  Future<void> play() => _player.play();
-  Future<void> pause() => _player.pause();
+  EmbedPlayer get _embed => ref.read(embedPlayerProvider);
+
+  Future<void> play() => state.embed ? _embed.play() : _player.play();
+  Future<void> pause() => state.embed ? _embed.pause() : _player.pause();
   Future<void> togglePlay() => state.playing ? pause() : play();
 
   Future<void> seek(Duration d) async {
     final max = state.duration > Duration.zero ? state.duration : d;
     final t = d < Duration.zero ? Duration.zero : (d > max ? max : d);
     state = state.copyWith(position: t);
-    await _player.seek(t);
+    if (state.embed) {
+      await _embed.seek(t);
+    } else {
+      await _player.seek(t);
+    }
   }
 
   Future<void> seekRelative(int seconds) => seek(state.position + Duration(seconds: seconds));
@@ -283,7 +300,11 @@ class PlayerController extends Notifier<PlayerUiState> {
 
   Future<void> setSpeed(double r) async {
     state = state.copyWith(speed: r);
-    await _player.setRate(r);
+    if (state.embed) {
+      await _embed.setRate(r);
+    } else {
+      await _player.setRate(r);
+    }
   }
 
   void setRepeat(RepeatMode m) {
@@ -326,6 +347,8 @@ class PlayerController extends Notifier<PlayerUiState> {
   Future<void> setAudioOnly(bool audioOnly) async {
     if (audioOnly == state.audioOnly) return;
     state = state.copyWith(audioOnly: audioOnly);
+    // The embedded player keeps playing; audio-only just covers the video with artwork.
+    if (state.embed) return;
     if (state.isActive) await _loadCurrent(start: state.position, keepPlaying: state.playing);
   }
 
@@ -337,6 +360,7 @@ class PlayerController extends Notifier<PlayerUiState> {
   Future<void> stop() async {
     await _savePosition();
     await _player.stop();
+    if (state.embed) await _embed.stop();
     state = PlayerUiState(
       audioOnly: state.audioOnly,
       autoplay: state.autoplay,
@@ -369,6 +393,26 @@ class PlayerController extends Notifier<PlayerUiState> {
       clearQuality: start == null,
     );
     _updateRemoteControls();
+
+    // Downloaded files play natively (with the DSP); online YouTube videos play through
+    // YouTube's official embedded player.
+    final dl = ref.read(downloadManagerProvider)[item.id];
+    final offline = dl != null && dl.status == DownloadStatus.done && dl.filePath != null && File(dl.filePath!).existsSync();
+    if (!offline) {
+      if (!state.embed) await _player.stop();
+      state = state.copyWith(embed: true, state: NativePlaybackState.loading);
+      await _embed.load(item.id, startSeconds: (start ?? Duration.zero).inMilliseconds / 1000, autoplay: keepPlaying);
+      if (token != _loadToken) return;
+      state = state.copyWith(loadingItem: false);
+      if (state.speed != 1.0) await _embed.setRate(state.speed);
+      ref.read(libraryActionsProvider).addHistory(item);
+      _loadUpNext(item, token);
+      return;
+    }
+    if (state.embed) {
+      await _embed.stop();
+      state = state.copyWith(embed: false);
+    }
     try {
       final media = await _mediaFor(item);
       if (token != _loadToken) return;
@@ -526,10 +570,51 @@ class PlayerController extends Notifier<PlayerUiState> {
   }
 
   // ---------------------------------------------------------------------------------------
+  // Embedded (YouTube IFrame) player events
+  // ---------------------------------------------------------------------------------------
+  static NativePlaybackState _embedState(int s) => switch (s) {
+        0 => NativePlaybackState.ended,
+        1 || 2 => NativePlaybackState.ready,
+        3 => NativePlaybackState.buffering,
+        5 => NativePlaybackState.ready,
+        _ => NativePlaybackState.loading,
+      };
+
+  void _onEmbedEvent(EmbedEvent e) {
+    if (!state.embed) return;
+    switch (e.type) {
+      case 'state':
+        final s = (e.data['s'] as num?)?.toInt() ?? -1;
+        final wasEnded = state.state == NativePlaybackState.ended;
+        state = state.copyWith(state: _embedState(s), playing: s == 1 || s == 3, clearError: s == 1);
+        if (s == 0 && !wasEnded) next(auto: true);
+      case 'time':
+        final d = Duration(milliseconds: (((e.data['d'] as num?) ?? 0) * 1000).round());
+        final t = Duration(milliseconds: (((e.data['t'] as num?) ?? 0) * 1000).round());
+        final b = ((e.data['b'] as num?) ?? 0).toDouble();
+        final s = (e.data['s'] as num?)?.toInt() ?? -1;
+        state = state.copyWith(
+          position: t,
+          duration: d > Duration.zero ? d : state.duration,
+          buffered: Duration(milliseconds: (d.inMilliseconds * b).round()),
+          playing: s == 1 || s == 3,
+        );
+        if (s == 1) _maybePrefetchNext();
+      case 'error':
+        final code = (e.data['code'] as num?)?.toInt() ?? 0;
+        state = state.copyWith(error: embedErrorText(code), playing: false, loadingItem: false);
+      case 'rate':
+        break;
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------
   // Native events
   // ---------------------------------------------------------------------------------------
   void _onEvent(PlayerEvent e) {
     switch (e) {
+      case PlayerStateEvent() when state.embed:
+        break;
       case PlayerStateEvent():
         final wasEnded = state.state == NativePlaybackState.ended;
         state = state.copyWith(
@@ -578,6 +663,10 @@ class PlayerController extends Notifier<PlayerUiState> {
         state = state.copyWith(pipActive: e.active);
       case InterruptionEvent():
       case RouteChangeEvent():
+      case AppBackgroundEvent(:final background) when background && state.embed && state.playing:
+        Future<void>.delayed(const Duration(milliseconds: 600), () {
+          if (state.embed) _embed.play();
+        });
       case AppBackgroundEvent():
         break;
     }

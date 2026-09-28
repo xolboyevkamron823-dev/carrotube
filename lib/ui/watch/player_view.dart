@@ -9,6 +9,7 @@ import '../../core/format.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
+import '../../player/embed_player.dart';
 import '../../player/player_controller.dart';
 import '../queue/queue_sheet.dart';
 import '../widgets/states.dart';
@@ -184,10 +185,23 @@ class _PlayerMedia extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final (video, textureId, audioOnly, aspect) = ref.watch(
-      playerProvider.select((s) => (s.current, s.textureId, s.audioOnly, s.aspectRatio)),
+    final (video, textureId, audioOnly, aspect, embed) = ref.watch(
+      playerProvider.select((s) => (s.current, s.textureId, s.audioOnly, s.aspectRatio, s.embed)),
     );
     if (video == null) return const ColoredBox(color: Colors.black);
+    if (embed) {
+      // The web view must stay mounted (it produces the sound); audio-only covers it.
+      return ColoredBox(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const Center(child: AspectRatio(aspectRatio: 16 / 9, child: EmbedPlayerSurface())),
+            if (audioOnly) AudioArtwork(key: ValueKey('art${video.id}'), video: video),
+          ],
+        ),
+      );
+    }
     final Widget child;
     if (!audioOnly && textureId != null) {
       child = Center(
