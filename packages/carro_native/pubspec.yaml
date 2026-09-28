@@ -1,0 +1,25 @@
+name: carro_native
+description: "CarroTube native layer: Pioneer Carrozzeria style C++ DSP engine (dart:ffi) plus the ExoPlayer / AVPlayer based players, background playback and IR capture."
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.4
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.2.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: uz.carrotube.carro_native
+        pluginClass: CarroNativePlugin
+      ios:
+        pluginClass: CarroNativePlugin

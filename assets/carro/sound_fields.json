@@ -1,0 +1,13 @@
+{
+  "format": "carrotube.soundfields/1",
+  "comment": "Algorithmic Sound Field table. Tune by ear against the real head unit (Sound tab > Sound Field > Tune) and export. rt60 = mid-band (500 Hz/1 kHz) decay in seconds at SIZE M; S/L scale it by 0.82/1.22. Room dimensions (m) drive the image-source early reflections and FDN line lengths.",
+  "modes": [
+    {"mode": 1, "name": "STUDIO",       "preDelayMs": 8,  "rt60": 0.45, "lowMult": 1.0,  "dampHz": 9000, "erLevelDb": -2, "lateLevelDb": -6, "density": 0.60, "width": 0.8, "roomW": 6,   "roomL": 8,   "roomH": 3.5, "wetHpfHz": 150, "modDepthMs": 0.20, "modRateHz": 0.70, "wetLpfHz": 14000},
+    {"mode": 2, "name": "JAZZ CLUB",    "preDelayMs": 14, "rt60": 0.85, "lowMult": 1.1,  "dampHz": 6000, "erLevelDb": -3, "lateLevelDb": -4, "density": 0.65, "width": 0.9, "roomW": 10,  "roomL": 14,  "roomH": 4,   "wetHpfHz": 150, "modDepthMs": 0.30, "modRateHz": 0.60, "wetLpfHz": 11000},
+    {"mode": 3, "name": "CONCERT HALL", "preDelayMs": 26, "rt60": 2.0,  "lowMult": 1.25, "dampHz": 5500, "erLevelDb": -4, "lateLevelDb": -1, "density": 0.75, "width": 1.1, "roomW": 24,  "roomL": 38,  "roomH": 15,  "wetHpfHz": 150, "modDepthMs": 0.35, "modRateHz": 0.45, "wetLpfHz": 12000},
+    {"mode": 4, "name": "CATHEDRAL",    "preDelayMs": 35, "rt60": 3.6,  "lowMult": 1.35, "dampHz": 4200, "erLevelDb": -6, "lateLevelDb": 0,  "density": 0.85, "width": 1.2, "roomW": 30,  "roomL": 60,  "roomH": 25,  "wetHpfHz": 150, "modDepthMs": 0.40, "modRateHz": 0.35, "wetLpfHz": 10000},
+    {"mode": 5, "name": "STADIUM",      "preDelayMs": 45, "rt60": 2.6,  "lowMult": 1.1,  "dampHz": 3500, "erLevelDb": -9, "lateLevelDb": -2, "density": 0.55, "width": 1.4, "roomW": 120, "roomL": 160, "roomH": 30,  "wetHpfHz": 160, "modDepthMs": 0.45, "modRateHz": 0.30, "wetLpfHz": 9000},
+    {"mode": 6, "name": "LIVE",         "preDelayMs": 18, "rt60": 1.2,  "lowMult": 1.15, "dampHz": 5000, "erLevelDb": -2, "lateLevelDb": -3, "density": 0.70, "width": 1.0, "roomW": 16,  "roomL": 24,  "roomH": 7,   "wetHpfHz": 150, "modDepthMs": 0.30, "modRateHz": 0.55, "wetLpfHz": 11000},
+    {"mode": 7, "name": "DOME",         "preDelayMs": 30, "rt60": 2.9,  "lowMult": 1.2,  "dampHz": 4800, "erLevelDb": -5, "lateLevelDb": -1, "density": 0.80, "width": 1.3, "roomW": 40,  "roomL": 40,  "roomH": 30,  "wetHpfHz": 150, "modDepthMs": 0.40, "modRateHz": 0.40, "wetLpfHz": 10500}
+  ]
+}
