@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/database.dart';
 import '../data/download_manager.dart';
 import '../data/library.dart';
+import '../data/local_music.dart';
 import '../data/models.dart';
 import '../data/settings.dart';
 import '../data/youtube_service.dart';
@@ -397,7 +398,12 @@ class PlayerController extends Notifier<PlayerUiState> {
     // Downloaded files play natively (with the DSP); online YouTube videos play through
     // YouTube's official embedded player.
     final dl = ref.read(downloadManagerProvider)[item.id];
-    final offline = dl != null && dl.status == DownloadStatus.done && dl.filePath != null && File(dl.filePath!).existsSync();
+    final offline = LocalMusic.pathFor(item.id) != null ||
+        (dl != null && dl.status == DownloadStatus.done && dl.filePath != null && File(dl.filePath!).existsSync());
+    if (!offline && LocalMusic.isLocalId(item.id)) {
+      state = state.copyWith(loadingItem: false, error: 'File not found', playing: false);
+      return;
+    }
     if (!offline) {
       if (!state.embed) await _player.stop();
       state = state.copyWith(embed: true, state: NativePlaybackState.loading);
@@ -436,6 +442,18 @@ class PlayerController extends Notifier<PlayerUiState> {
   }
 
   Future<NativeMediaItem> _mediaFor(VideoItem item, {bool refresh = false}) async {
+    // "My music" file.
+    final local = LocalMusic.pathFor(item.id);
+    if (local != null) {
+      return NativeMediaItem(
+        id: item.id,
+        audioUrl: local,
+        title: item.title,
+        artist: item.channelName,
+        duration: item.duration,
+        isLocalFile: true,
+      );
+    }
     // Offline copy first.
     final dl = ref.read(downloadManagerProvider)[item.id];
     if (dl != null && dl.status == DownloadStatus.done && dl.filePath != null && File(dl.filePath!).existsSync()) {
@@ -478,6 +496,7 @@ class PlayerController extends Notifier<PlayerUiState> {
   }
 
   Future<void> _loadUpNext(VideoItem item, int token) async {
+    if (LocalMusic.isLocalId(item.id)) return; // no YouTube recommendations for local files
     try {
       final page = await _yt.related(item.id);
       if (token != _loadToken) return;

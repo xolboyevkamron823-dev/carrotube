@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'data/database.dart';
+import 'data/local_music.dart';
 import 'data/settings.dart';
 import 'dsp/sound_controller.dart';
 
@@ -13,6 +14,7 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   final db = await AppDatabase.open();
+  await LocalMusic.dir();
   final settings = await SettingsNotifier.load(db);
   final sfTable = await SoundController.loadDefaultTable();
 

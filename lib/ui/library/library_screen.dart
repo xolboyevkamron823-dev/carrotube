@@ -14,6 +14,7 @@ import '../widgets/thumbnail.dart';
 import 'downloads_screen.dart';
 import 'history_screen.dart';
 import 'liked_screen.dart';
+import 'local_music_screen.dart';
 import 'subscriptions_screen.dart';
 
 /// "Library" / "You" tab: history carousel, downloads, liked, subscriptions and the
@@ -80,6 +81,12 @@ class LibraryScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             const Divider(),
+            _EntryTile(
+              icon: Icons.library_music_outlined,
+              title: context.tr('my_music'),
+              subtitle: context.tr('my_music_sub'),
+              onTap: () => pushInTab<void>(context, const LocalMusicScreen()),
+            ),
             _EntryTile(
               icon: Icons.download_outlined,
               title: context.tr('downloads'),

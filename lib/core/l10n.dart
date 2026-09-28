@@ -20,6 +20,11 @@ class AppStrings {
 
   static const _strings = <String, Map<String, String>>{
     'en': {
+      'my_music': 'My music',
+      'my_music_sub': 'Local files with the Carrozzeria sound',
+      'my_music_hint': 'Files here play through the Carrozzeria DSP (EQ, Sound Field, crossover...) and keep playing with the screen off. Import MP3/M4A/FLAC/WAV, or copy files into Files > On My iPhone > CarroTube.',
+      'import_music': 'Import',
+      'imported_n': '{n} files added',
       'app_name': 'CarroTube',
       'home': 'Home',
       'explore': 'Explore',
@@ -222,6 +227,11 @@ class AppStrings {
           '1. Settings → Battery → Background power consumption → CarroTube → Allow.\n2. i Manager → App manager → Autostart: enable CarroTube.',
     },
     'ru': {
+      'my_music': 'Моя музыка',
+      'my_music_sub': 'Файлы на телефоне со звуком Carrozzeria',
+      'my_music_hint': 'Эти файлы звучат через DSP Carrozzeria (эквалайзер, Sound Field, кроссовер...) и играют при выключенном экране. Импортируйте MP3/M4A/FLAC/WAV или скопируйте файлы в «Файлы > На iPhone > CarroTube».',
+      'import_music': 'Импорт',
+      'imported_n': 'Добавлено файлов: {n}',
       'app_name': 'CarroTube',
       'home': 'Главная',
       'explore': 'Навигатор',
@@ -424,6 +434,11 @@ class AppStrings {
           '1. Настройки → Батарея → Потребление энергии в фоне → CarroTube → Разрешить.\n2. i Manager → Диспетчер приложений → Автозапуск: включите CarroTube.',
     },
     'uz': {
+      'my_music': 'Mening musiqam',
+      'my_music_sub': 'Telefondagi fayllar Carrozzeria ovozi bilan',
+      'my_music_hint': 'Bu fayllar Carrozzeria DSP (EQ, Sound Field, crossover...) orqali ijro etiladi va ekran o‘chganda ham davom etadi. MP3/M4A/FLAC/WAV import qiling yoki fayllarni «Fayllar > iPhone’da > CarroTube» papkasiga ko‘chiring.',
+      'import_music': 'Import',
+      'imported_n': '{n} ta fayl qo‘shildi',
       'app_name': 'CarroTube',
       'home': 'Bosh sahifa',
       'explore': 'Kashf etish',
