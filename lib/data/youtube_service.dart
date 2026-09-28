@@ -177,8 +177,63 @@ class YoutubeService {
   }
 
   Future<Paged<SearchEntry>> search(String query, [SearchFilters filters = const SearchFilters()]) async {
-    final list = await _yt.search.searchContent(query, filter: _filterFor(filters));
-    return _searchPage(list, filters);
+    try {
+      return await _itSearchPage(query, filters, null);
+    } catch (_) {
+      final list = await _yt.search.searchContent(query, filter: _filterFor(filters));
+      return _searchPage(list, filters);
+    }
+  }
+
+  VideoItem _fromItVideo(ItVideo v) => VideoItem(
+        id: v.entry.id,
+        title: v.entry.title,
+        channelName: v.entry.channel,
+        channelId: v.entry.channelId,
+        duration: v.entry.duration,
+        viewCount: v.entry.viewCount,
+        uploadDateText: v.entry.published,
+        isLive: v.isLive,
+      );
+
+  Future<Paged<SearchEntry>> _itSearchPage(String query, SearchFilters f, String? continuation) async {
+    final params = _filterFor(f).value;
+    final page = await _innertube.search(
+      query,
+      params: params.isEmpty ? null : Uri.decodeComponent(params),
+      continuation: continuation,
+    );
+    final out = <SearchEntry>[];
+    for (final r in page.results) {
+      switch (r) {
+        case ItVideo():
+          if (f.type != SearchType.all && f.type != SearchType.videos) continue;
+          final v = _fromItVideo(r);
+          if (f.duration == SearchDuration.short && (v.duration?.inMinutes ?? 0) >= 4) continue;
+          if (f.duration == SearchDuration.long && (v.duration?.inMinutes ?? 0) < 20) continue;
+          out.add(SearchVideoEntry(v));
+        case ItChannel():
+          if (f.type != SearchType.all && f.type != SearchType.channels) continue;
+          out.add(SearchChannelEntry(ChannelItem(
+            id: r.id,
+            title: r.title,
+            avatarUrl: r.avatarUrl,
+            subscriberCount: r.subscribers,
+          )));
+        case ItPlaylist():
+          if (f.type != SearchType.all && f.type != SearchType.playlists) continue;
+          out.add(SearchPlaylistEntry(PlaylistItem(
+            id: r.id,
+            title: r.title,
+            author: r.author,
+            thumbnailUrl: r.thumbnailUrl,
+            videoCount: r.videoCount,
+          )));
+      }
+    }
+    if (page.results.isEmpty && continuation == null) throw StateError('empty search');
+    final token = page.continuation;
+    return Paged(out, token == null ? null : () => _itSearchPage(query, f, token));
   }
 
   Paged<SearchEntry> _searchPage(yt.SearchList list, SearchFilters f) => Paged(
@@ -191,8 +246,24 @@ class YoutubeService {
 
   /// Plain video search used by the home feed / explore shelves.
   Future<Paged<VideoItem>> videoSearch(String query, {yt.SearchFilter? filter}) async {
-    final list = await _yt.search.search(query, filter: filter ?? yt.TypeFilters.video);
-    return _videoSearchPage(list);
+    try {
+      return await _itVideoPage(query, (filter ?? yt.TypeFilters.video).value, null);
+    } catch (_) {
+      final list = await _yt.search.search(query, filter: filter ?? yt.TypeFilters.video);
+      return _videoSearchPage(list);
+    }
+  }
+
+  Future<Paged<VideoItem>> _itVideoPage(String query, String params, String? continuation) async {
+    final page = await _innertube.search(
+      query,
+      params: params.isEmpty ? null : Uri.decodeComponent(params),
+      continuation: continuation,
+    );
+    final items = page.results.whereType<ItVideo>().map(_fromItVideo).toList();
+    if (items.isEmpty && continuation == null) throw StateError('empty search');
+    final token = page.continuation;
+    return Paged(items, token == null ? null : () => _itVideoPage(query, params, token));
   }
 
   Paged<VideoItem> _videoSearchPage(yt.VideoSearchList list) {

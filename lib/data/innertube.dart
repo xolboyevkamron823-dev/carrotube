@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+part 'innertube_search.dart';
+
 /// Direct InnerTube `/player` client used to resolve stream URLs.
 ///
 /// Since 2026 YouTube answers anonymous player requests without a visitor id with
