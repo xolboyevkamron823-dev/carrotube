@@ -8,6 +8,7 @@ import '../../core/l10n.dart';
 import '../../data/settings.dart';
 import '../../player/player_controller.dart';
 import '../widgets/logo.dart';
+import 'diagnostics_screen.dart';
 
 /// App settings: theme, language, playback, and (Android) background playback help.
 class SettingsScreen extends ConsumerWidget {
@@ -113,6 +114,12 @@ class SettingsScreen extends ConsumerWidget {
           ],
           const Divider(),
           _Header(context.tr('about')),
+          ListTile(
+            leading: const Icon(Icons.health_and_safety_outlined),
+            title: const Text('Diagnostika'),
+            subtitle: Text('YouTube, DSP, player', style: secondary),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DiagnosticsScreen())),
+          ),
           ListTile(
             leading: const Padding(padding: EdgeInsets.only(top: 4), child: CarroTubeLogo(height: 16)),
             title: const SizedBox.shrink(),

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt;
 
+import 'innertube.dart';
 import 'models.dart';
 
 /// A page of results plus a way to fetch the next page (infinite scroll).
@@ -29,6 +30,7 @@ class YoutubeService {
   YoutubeService() : _yt = yt.YoutubeExplode();
 
   final yt.YoutubeExplode _yt;
+  final _innertube = InnertubePlayer();
   final _videoCache = <String, yt.Video>{};
   final _streamCache = <String, ResolvedStreams>{};
   final _inflight = <String, Future<ResolvedStreams>>{};
@@ -36,7 +38,10 @@ class YoutubeService {
   /// User-Agent of the Android client whose stream URLs we play (YouTube checks it).
   static const androidClientUa = 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip';
 
-  void close() => _yt.close();
+  void close() {
+    _yt.close();
+    _innertube.close();
+  }
 
   // ---------------------------------------------------------------------------------------
   // Mapping helpers
@@ -213,9 +218,50 @@ class YoutubeService {
   }
 
   /// Full metadata (description, likes, date).
-  Future<VideoItem> video(String id) async => _fromVideo(await _video(id));
+  Future<VideoItem> video(String id) async {
+    try {
+      return _fromVideo(await _video(id));
+    } catch (e) {
+      // Watch page blocked by the bot check: use the player response's videoDetails.
+      try {
+        final p = await _innertube.player(id, 'ANDROID_VR');
+        final d = (p.json['videoDetails'] as Map?)?.cast<String, dynamic>();
+        if (d == null) rethrow;
+        return VideoItem(
+          id: id,
+          title: d['title'] as String? ?? '',
+          channelName: d['author'] as String? ?? '',
+          channelId: d['channelId'] as String?,
+          duration: Duration(seconds: int.tryParse('${d['lengthSeconds']}') ?? 0),
+          viewCount: int.tryParse('${d['viewCount']}'),
+          description: d['shortDescription'] as String?,
+          isLive: d['isLiveContent'] == true && d['isLive'] == true,
+        );
+      } catch (_) {
+        rethrow;
+      }
+    }
+  }
 
   Future<Paged<VideoItem>> related(String id) async {
+    try {
+      final list = await _innertube.related(id);
+      if (list.isNotEmpty) {
+        return Paged(list
+            .map((e) => VideoItem(
+                  id: e.id,
+                  title: e.title,
+                  channelName: e.channel,
+                  channelId: e.channelId,
+                  duration: e.duration,
+                  viewCount: e.viewCount,
+                  uploadDateText: e.published,
+                ))
+            .toList());
+      }
+    } catch (_) {
+      // fall back to youtube_explode below
+    }
     final v = await _video(id);
     final list = await _yt.videos.getRelatedVideos(v);
     if (list == null) return Paged.empty();
@@ -338,12 +384,73 @@ class YoutubeService {
       final f = _inflight[id];
       if (f != null) return f;
     }
-    final fut = _resolve(id).whenComplete(() => _inflight.remove(id));
+    // Block body on purpose: `=> _inflight.remove(id)` would return this very future and
+    // whenComplete would wait for it forever (deadlock).
+    final fut = _resolve(id).whenComplete(() {
+      _inflight.remove(id);
+    });
     _inflight[id] = fut;
     return fut;
   }
 
   Future<ResolvedStreams> _resolve(String id) async {
+    // 1) Direct InnerTube player request with a visitor id (works around YouTube's
+    //    "confirm you're not a bot" wall). 2) youtube_explode as a fallback.
+    Object? firstError;
+    final order = Platform.isIOS ? const ['IOS', 'ANDROID_VR', 'ANDROID'] : const ['ANDROID_VR', 'ANDROID', 'IOS'];
+    for (final client in order) {
+      try {
+        final r = _fromInnertube(await _innertube.player(id, client));
+        if (r != null) {
+          _streamCache[id] = r;
+          return r;
+        }
+      } catch (e) {
+        firstError ??= e;
+      }
+    }
+    try {
+      return await _resolveWithExplode(id);
+    } catch (e) {
+      throw firstError ?? e;
+    }
+  }
+
+  ResolvedStreams? _fromInnertube(PlayerResponse p) {
+    final ios = Platform.isIOS;
+    final audios = p.adaptive.where((f) => f.isAudio).toList()..sort((a, b) => b.bitrate.compareTo(a.bitrate));
+    final mp4Audio = audios.where((f) => f.isMp4).toList();
+    final audio = ios ? (mp4Audio.isEmpty ? null : mp4Audio.first) : (audios.isEmpty ? null : audios.first);
+    final muxed = p.muxed.where((f) => f.isMp4).toList()..sort((a, b) => b.height.compareTo(a.height));
+    final muxedUrl = muxed.isEmpty ? null : muxed.first.url;
+    final byHeight = <int, InnertubeFormat>{};
+    for (final v in p.adaptive.where((f) => f.isVideo)) {
+      final avc = v.isMp4 && v.isAvc;
+      if (!avc && ios) continue;
+      if (v.height <= 0 || v.height > 1080) continue;
+      final prev = byHeight[v.height];
+      final prevAvc = prev != null && prev.isAvc;
+      if (prev == null || (avc && !prevAvc) || (avc == prevAvc && v.bitrate > prev.bitrate)) byHeight[v.height] = v;
+    }
+    final choices = [
+      for (final e in byHeight.entries) StreamChoice(label: '${e.key}p', height: e.key, url: e.value.url!, muxed: false),
+      for (final m in muxed)
+        if (!byHeight.containsKey(m.height)) StreamChoice(label: '${m.height}p', height: m.height, url: m.url!, muxed: true),
+    ]..sort((a, b) => b.height.compareTo(a.height));
+    final audioUrl = audio?.url ?? muxedUrl;
+    if (audioUrl == null) return null;
+    return ResolvedStreams(
+      audioUrl: audioUrl,
+      headers: {'User-Agent': p.userAgent},
+      videoChoices: choices,
+      muxedUrl: muxedUrl,
+      resolvedAt: DateTime.now(),
+      audioBitrateKbps: audio == null ? null : (audio.bitrate / 1000).round(),
+      audioCodec: audio?.codec,
+    );
+  }
+
+  Future<ResolvedStreams> _resolveWithExplode(String id) async {
     final manifest = await _yt.videos.streamsClient.getManifest(id);
     final ios = Platform.isIOS;
 
